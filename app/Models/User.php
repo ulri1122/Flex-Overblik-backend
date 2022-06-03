@@ -11,6 +11,7 @@ use Laravel\Sanctum\HasApiTokens;
 class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
+    protected $table = 'users';
 
     /**
      * The attributes that are mass assignable.
@@ -19,8 +20,9 @@ class User extends Authenticatable
      */
     protected $fillable = [
         'name',
-        'email',
+        'phone',
         'password',
+        'email'
     ];
 
     /**
@@ -41,4 +43,17 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
     ];
+
+    public function nfcCards()
+    {
+        return $this->hasMany(\App\Models\NfcCards::class, 'user_id', 'user_id');
+    }
+    public function hasCheckIns()
+    {
+        return $this->hasMany(\App\Models\CheckIn::class, 'user_id', 'user_id');
+    }
+    public function teams()
+    {
+        return $this->belongsToMany(Team::class);
+    }
 }
