@@ -6,12 +6,14 @@ use App\Models\CheckIn;
 use App\Models\NfcCards;
 use App\Models\Team;
 use App\Models\User;
+use App\Models\WorkTimes;
 use App\Services\CheckInService;
 use App\Services\NfcCardService;
 use App\Services\UserService;
 use DateTime;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 
 class UserController extends Controller
 {
@@ -48,7 +50,6 @@ class UserController extends Controller
         if (!isset($request['team_id']))
             return response(['error' => 'missing_team_id'], 404);
 
-
         $team = Team::find($request['team_id']);
         if (!$team) {
             return response(['error' => 'team_not_found'], 404);
@@ -58,24 +59,34 @@ class UserController extends Controller
         $NfcCards = new NfcCardService();
 
 
-        if (isset($request['user_id'])) {
+        if (isset($request['user_id']) && $request['user_id'] != 0) {
             $user = $this->getUser($request['user_id']);
             if (!$user) {
                 return response(['error' => 'not found'], 404);
             }
 
+
             $UserService->updateUser($user, $request);
 
             $nfccard = $NfcCards->getNfcCard($request['card_id']);
             if (!$nfccard) {
-
-
                 $NfcCards->createCard($user, $request['card_id']);
             }
+
+
+            $current_user_teams = User::find($user->id)->teams()->where('team_id', $request['team_id'])->get();
+
+            if (!isset($current_user_teams[0])) {
+                User::find($user->id)->teams()->attach($team);
+            }
+            $user['teams'] = User::find($request['user_id'])->teams()->get() ?? [];
+
             return $user;
         }
 
         $user = $UserService->createUser($request);
+
+
         if (!$user) {
             return response(['error' => 'user_does_not_excist'], 404);
         }
@@ -179,7 +190,6 @@ class UserController extends Controller
             die("errro");
         }
         $checkInTypeRow = CheckIn::where('user_id', $user->id)->latest()->first();
-        Log::alert($checkInTypeRow);
         switch ($checkInTypeRow->check_in_type ?? false) {
             case 1:
                 return "at_work";
@@ -195,7 +205,6 @@ class UserController extends Controller
             return response(['error' => 'missing_id'], 404);
         }
 
-
         $user = $this->getUser($request['id']);
 
         $user->current_flex = $this->getCurrentFlexBalance($user);
@@ -208,12 +217,11 @@ class UserController extends Controller
         $CheckInService = new CheckInService();
         // skal tage de sidste 14 dage og ikke de sidste 14 records
         $time_stamps = $CheckInService->getTimeStamps($user->id, 40);
-        Log::alert($time_stamps);
         if (!isset($time_stamps[0]['created_at'])) {
             return null;
         }
 
-        $date_range = $this->date_range($time_stamps[0]['created_at'], $time_stamps[count($time_stamps) - 1]['created_at'], '+1 day', 'c');
+        $date_range = $this->date_range($time_stamps[count($time_stamps) - 1]['created_at'], $time_stamps[0]['created_at'],  '+1 day', 'c');
 
 
         $workHours = $this->getWorkhours();
@@ -276,5 +284,43 @@ class UserController extends Controller
             '6' => 0,
             '7' => 0
         );
+    }
+    public function createUserToken(Request $request)
+    {
+        $user = $this->getUser($request['user_id']);
+        $token = $user->createToken($request->header('User-Agent'));
+        return ['token' => $token->plainTextToken, 'user-agent' => $request->header('User-Agent')];
+    }
+    public function revokeUserToken(Request $request)
+    {
+        $request->user()->currentAccessToken()->delete();
+        return "token revoked";
+    }
+    public function getUserForUpdate(Request $request)
+    {
+        $returnArray = [];
+
+        $returnArray['user'] = $this->getUser($request['user_id']);
+        $returnArray['teams'] = Team::get();
+        $returnArray['card_data'] = NfcCards::where('user_id', $request['user_id'])->orderBy('id', 'desc')->first();
+        if ($request['user_id'] != 0) {
+            $returnArray['user']['teams'] = User::find($request['user_id'])->teams()->get() ?? [];
+        }
+        if (!isset($request['user_id'])) {
+            $returnArray['work_times'] = WorkTimes::where('user_id', $request['user_id'])->first();
+        }
+        return $returnArray;
+    }
+    public function removeUserFromTeam(Request $request)
+    {
+        if (!isset($request['user_id'])) {
+            return response(['error' => 'missing_user_id'], 404);
+        }
+        if (!isset($request['team_id'])) {
+            return response(['error' => 'missing_team_id'], 404);
+        }
+
+        User::find($request['user_id'])->teams()->detach($request['team_id']);
+        return ['success' => 'user_removed_from_team'];
     }
 }

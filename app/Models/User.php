@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class User extends Authenticatable
 {
@@ -22,7 +23,9 @@ class User extends Authenticatable
         'name',
         'phone',
         'password',
-        'email'
+        'email',
+        'is_admin',
+        'image_path'
     ];
 
     /**
@@ -33,6 +36,8 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        'email_verified_at'
+
     ];
 
     /**
@@ -55,5 +60,10 @@ class User extends Authenticatable
     public function teams()
     {
         return $this->belongsToMany(Team::class);
+    }
+
+    public function hasTeams()
+    {
+        return $this->hasMany(Team::class);
     }
 }

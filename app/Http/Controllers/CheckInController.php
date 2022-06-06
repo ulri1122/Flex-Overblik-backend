@@ -12,7 +12,6 @@ class CheckInController extends Controller
     {
         $CheckIn = new CheckInService();
         $UserController = new UserController();
-        Log::alert($request);
         if (isset($request['user_id'])) {
             $CheckIn->checkInWithUserId($request);
             $user = $UserController->getUser($request->user_id);

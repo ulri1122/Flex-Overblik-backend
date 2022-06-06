@@ -30,7 +30,7 @@ class TeamController extends Controller
         $queried_user = $team->where('id', $request['team_id'])->first();
         return $queried_user;
     }
-    public function getTeams()
+    public function getTeamsWidthUsers()
     {
         $team = new Team();
         $teams = $team->get();
@@ -47,5 +47,31 @@ class TeamController extends Controller
             }
         }
         return $teams;
+    }
+    public function getTeams()
+    {
+        $team = new Team();
+        return $teams = $team->get();
+    }
+    public function deleteTeam(Request $request)
+    {
+        if (!$request['team_id']) {
+            return response(['error' => 'missing_team_id'], 404);
+        }
+        Team::where('id', $request['team_id'])->delete();
+        return $request['team_id'];
+    }
+    public function updateTeamName(Request $request)
+    {
+        if (!$request['team_id']) {
+            return response(['error' => 'missing_team_id'], 404);
+        }
+        if (!$request['team_name']) {
+            return response(['error' => 'missing_new_team_name'], 404);
+        }
+        Team::where('id', $request['team_id'])->update(['team_name' => $request['team_name']]);
+        $data = Team::where('id', $request['team_id'])->first();
+
+        return $data;
     }
 }

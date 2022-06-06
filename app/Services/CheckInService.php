@@ -65,7 +65,7 @@ class CheckInService
         if ($take == "*") {
             return CheckIn::where('user_id', $user_id)->get();
         } else {
-            return CheckIn::where('user_id', $user_id)->take($take)->get();
+            return CheckIn::where('user_id', $user_id)->take($take)->orderBy('id', 'desc')->get();
         }
     }
 }
