@@ -13,6 +13,7 @@ use App\Services\UserService;
 use DateTime;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Validator;
 
 class UserController extends Controller
@@ -57,6 +58,7 @@ class UserController extends Controller
 
         $UserService = new UserService();
         $NfcCards = new NfcCardService();
+        $WorkDayController = new WorkDayController();
 
 
         if (isset($request['user_id']) && $request['user_id'] != 0) {
@@ -81,6 +83,10 @@ class UserController extends Controller
             }
             $user['teams'] = User::find($request['user_id'])->teams()->get() ?? [];
 
+            $user['workTimes'] = $WorkDayController->insertWorkTimes($request['weekdays'], $request['user_id']);
+
+
+
             return $user;
         }
 
@@ -95,6 +101,7 @@ class UserController extends Controller
 
         User::find($user->id)->teams()->attach($team);
 
+        $user['workTimes'] = $WorkDayController->insertWorkTimes($request['weekdays'], $request['user_id']);
         return $user;
     }
     public function getCurrentFlexBalance(User $user)
@@ -104,7 +111,7 @@ class UserController extends Controller
         $total_time = 0;
         $timeStamps[0] = isset($timeStamps[0]) ? $timeStamps[0] : array('created_at' => gmdate("c"));
 
-        $total_work_hours_needed = $this->TotalWorkHoursNeeded($timeStamps[0]['created_at']);
+        $total_work_hours_needed = $this->TotalWorkHoursNeeded($timeStamps[0]['created_at'], $user->id);
 
         foreach ($timeStamps as $key => $timeStamp) {
             if (count($timeStamps) == 1) {
@@ -135,35 +142,39 @@ class UserController extends Controller
 
         return $time;
     }
-    public function TotalWorkHoursNeeded($startDate)
+    public function TotalWorkHoursNeeded($startDate, $user_id)
     {
 
-        $workhourdays = $this->getWorkHours();
+        $workhourdays = $this->getWorkHours($user_id);
 
+        if (!$workhourdays) {
+            return 0;
+        }
+        Log::alert($workhourdays);
         $dateRange = $this->date_range($startDate, date("c"), '+1 day', "c");
         $time_needed_for_work = 0;
         foreach ($dateRange as $key => $date) {
             $day_of_week = gmdate('N', strtotime($date));
             if ($day_of_week == '1') {
-                $time_needed_for_work += $workhourdays['1'];
+                $time_needed_for_work += (int)$workhourdays['1'] ?? 0;
             }
             if ($day_of_week == '2') {
-                $time_needed_for_work += $workhourdays['2'];
+                $time_needed_for_work += (int)$workhourdays['2'] ?? 0;
             }
             if ($day_of_week == '3') {
-                $time_needed_for_work += $workhourdays['3'];
+                $time_needed_for_work += (int)$workhourdays['3'] ?? 0;
             }
             if ($day_of_week == '4') {
-                $time_needed_for_work += $workhourdays['4'];
+                $time_needed_for_work += (int)$workhourdays['4'] ?? 0;
             }
             if ($day_of_week == '5') {
-                $time_needed_for_work += $workhourdays['5'];
+                $time_needed_for_work += (int)$workhourdays['5'] ?? 0;
             }
             if ($day_of_week == '6') {
-                $time_needed_for_work += $workhourdays['6'];
+                $time_needed_for_work += (int)$workhourdays['6'] ?? 0;
             }
             if ($day_of_week == '7') {
-                $time_needed_for_work += $workhourdays['7'];
+                $time_needed_for_work += (int)$workhourdays['7'] ?? 0;
             }
         }
         return $time_needed_for_work * 3600;
@@ -190,14 +201,17 @@ class UserController extends Controller
             die("errro");
         }
         $checkInTypeRow = CheckIn::where('user_id', $user->id)->latest()->first();
-        switch ($checkInTypeRow->check_in_type ?? false) {
-            case 1:
-                return "at_work";
-            case 2:
-                return "Working_home";
-            default:
-                return 'not_checked_in';
+        if (is_null($checkInTypeRow->checked_out)) {
+            switch ($checkInTypeRow->check_in_type ?? false) {
+                case 1:
+                    return "at_work";
+                case 2:
+                    return "Working_home";
+                default:
+                    return 'not_checked_in';
+            }
         }
+        return 'not_checked_in';
     }
     function getUserProfile(Request $request)
     {
@@ -224,7 +238,7 @@ class UserController extends Controller
         $date_range = $this->date_range($time_stamps[count($time_stamps) - 1]['created_at'], $time_stamps[0]['created_at'],  '+1 day', 'c');
 
 
-        $workHours = $this->getWorkhours();
+        $workHours = $this->getWorkhours($user->id);
 
         $resultsDateArray = array();
 
@@ -232,7 +246,7 @@ class UserController extends Controller
 
             $resultsDateArray[$key] = array('date' => $date);
             $resultsDateArray[$key]['time_at_work'] = 0;
-            $resultsDateArray[$key]['time_to_work'] =  $workHours[gmdate('N', strtotime($date))] * 3600;
+            $resultsDateArray[$key]['time_to_work'] =  ((int)$workHours[gmdate('N', strtotime($date))] ?? 0) * 3600;
             $resultsDateArray[$key]['flex_balance_on_day'] = 0;
             $resultsDateArray[$key]['clock_in'] =  0;
             $resultsDateArray[$key]['clock_out'] =  0;
@@ -268,23 +282,18 @@ class UserController extends Controller
                 $resultsDateArray[$key]['clock_out'] = $resultsDateArray[$key]['times'][count($resultsDateArray[$key]['times']) - 1]['to'];
             }
 
-            $resultsDateArray[$key]['flex_balance_on_day']  = $diff - $workHours[gmdate('N', strtotime($date))] * 3600;
+            $resultsDateArray[$key]['flex_balance_on_day']  = $diff - (int)($workHours[gmdate('N', strtotime($date))] ?? 0) * 3600;
             $resultsDateArray[$key]['time_at_work'] = $diff;
         }
         return $resultsDateArray;
     }
-    public function getWorkHours()
+    public function getWorkHours($user_id)
     {
-        return array(
-            '1' => 8,
-            '2' => 8,
-            '3' => 8,
-            '4' => 8,
-            '5' => 6,
-            '6' => 0,
-            '7' => 0
-        );
+        $workDayController = new WorkDayController();
+
+        return $workDayController->GetWorkTimesRevers($user_id)[0]['work_times_array'] ?? false;
     }
+
     public function createUserToken(Request $request)
     {
         $user = $this->getUser($request['user_id']);
@@ -303,10 +312,11 @@ class UserController extends Controller
         $returnArray['user'] = $this->getUser($request['user_id']);
         $returnArray['teams'] = Team::get();
         $returnArray['card_data'] = NfcCards::where('user_id', $request['user_id'])->orderBy('id', 'desc')->first();
+        $returnArray['work_times'] = $this->getWorkHours($request['user_id']);
         if ($request['user_id'] != 0) {
             $returnArray['user']['teams'] = User::find($request['user_id'])->teams()->get() ?? [];
         }
-        if (!isset($request['user_id'])) {
+        if (!isset($request['user_id']) && $request['user_id'] != 0) {
             $returnArray['work_times'] = WorkTimes::where('user_id', $request['user_id'])->first();
         }
         return $returnArray;
@@ -322,5 +332,12 @@ class UserController extends Controller
 
         User::find($request['user_id'])->teams()->detach($request['team_id']);
         return ['success' => 'user_removed_from_team'];
+    }
+    public function deleteUser(Request $request)
+    {
+        NfcCards::where('user_id', $request['user_id'])->delete();
+        $user = User::find($request['user_id']);
+        $user->delete();
+        return 'success';
     }
 }

@@ -17,6 +17,11 @@ class CheckIn extends Model
     protected $fillable = [
         'user_id',
         'check_in_type',
+        'calculated_flex',
+        'calculated',
+        'checked_in',
+        'checked_out'
+
     ];
 
     /**

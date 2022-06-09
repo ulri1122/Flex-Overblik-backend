@@ -21,6 +21,9 @@ use Illuminate\Support\Facades\Route;
 //users.
 Route::get('/getUserProfile', [UserController::class, 'getUserProfile']);
 Route::post('/users', [UserController::class, 'createUser'])->middleware(['auth:sanctum']);
+Route::post('/deleteUser', [UserController::class, 'deleteUser'])->middleware(['auth:sanctum']);
+
+
 
 Route::post('/tokens/create', [UserController::class, 'createUserToken']);
 Route::get('/tokens/revoke', [UserController::class, 'revokeUserToken'])->middleware(['auth:sanctum']);
@@ -33,7 +36,7 @@ Route::post('/removeUserFromTeam', [UserController::class, 'removeUserFromTeam']
 
 //checkIn
 Route::post('/check_in', [CheckInController::class, 'checkIn']);
-
+Route::post('/calculateFlex', [CheckInController::class, 'calculateFlex']);
 
 //team
 Route::post('/createTeam', [TeamController::class, 'createTeam'])->middleware(['auth:sanctum']);

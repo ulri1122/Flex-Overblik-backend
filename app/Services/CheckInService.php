@@ -6,6 +6,7 @@ use App\Http\Controllers\UserController;
 use App\Models\CheckIn;
 use App\Models\NfcCards;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -28,16 +29,18 @@ class CheckInService
         }
         $checkInTypeRow = CheckIn::where('user_id', $nfc_card['user_id'])->latest()->first();
 
-        if ($checkInTypeRow && $checkInTypeRow['check_in_type'] != 0) {
-            $checkInType = 0;
+        if ($checkInTypeRow && is_null($checkInTypeRow['checked_out'])) {
+            $checkInTypeRow->checked_out = Carbon::now();
+            $checkInTypeRow->calculated = 0;
+            $checkInTypeRow->save();
+            return $checkInTypeRow;
         } else {
-            $checkInType = $request['check_in_type'];
+            return CheckIn::create([
+                'user_id' => $nfc_card->user->id,
+                'check_in_type' => $request['check_in_type'],
+                'checked_in' => Carbon::now()
+            ]);
         }
-
-        return CheckIn::create([
-            'user_id' => $nfc_card->user->id,
-            'check_in_type' => $checkInType
-        ]);
     }
     public function checkInWithUserId($request)
     {
@@ -48,17 +51,18 @@ class CheckInService
 
         $checkInTypeRow = CheckIn::where('user_id', $user->id)->latest()->first();
 
-        if ($checkInTypeRow && $checkInTypeRow['check_in_type'] != 0) {
-            $checkInType = 0;
+        if ($checkInTypeRow && is_null($checkInTypeRow['checked_out'])) {
+            $checkInTypeRow->checked_out = Carbon::now();
+            $checkInTypeRow->calculated = 0;
+            $checkInTypeRow->save();
+            return $checkInTypeRow;
         } else {
-            $checkInType = $request['check_in_type'];
+            return CheckIn::create([
+                'user_id' => $user->id,
+                'check_in_type' => $request['check_in_type'],
+                'checked_in' => Carbon::now()
+            ]);
         }
-
-
-        return CheckIn::create([
-            'user_id' => $user->id,
-            'check_in_type' => $checkInType
-        ]);
     }
     public function getTimeStamps(int $user_id, $take = "*")
     {
