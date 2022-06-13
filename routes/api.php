@@ -28,15 +28,21 @@ Route::post('/deleteUser', [UserController::class, 'deleteUser'])->middleware(['
 Route::post('/tokens/create', [UserController::class, 'createUserToken']);
 Route::get('/tokens/revoke', [UserController::class, 'revokeUserToken'])->middleware(['auth:sanctum']);
 Route::get('/getUserForUpdate', [UserController::class, 'getUserForUpdate']);
-
 Route::post('/removeUserFromTeam', [UserController::class, 'removeUserFromTeam'])->middleware(['auth:sanctum']);
 
+Route::post('/AddOffDay', [UserController::class, 'AddOffDay'])->middleware(['auth:sanctum']);
+Route::post('/deleteDayOff', [UserController::class, 'deleteDayOff'])->middleware(['auth:sanctum']);
+Route::post('/editDayOff', [UserController::class, 'editDayOff'])->middleware(['auth:sanctum']);
 
 
 
 //checkIn
 Route::post('/check_in', [CheckInController::class, 'checkIn']);
-Route::post('/calculateFlex', [CheckInController::class, 'calculateFlex']);
+Route::post('/updateTimeStamp', [CheckInController::class, 'updateTimeStamp'])->middleware(['auth:sanctum']);
+Route::post('/deleteTimeStamp', [CheckInController::class, 'deleteTimeStamp'])->middleware(['auth:sanctum']);
+//addFlex
+Route::post('/addFlex', [CheckInController::class, 'addFlex'])->middleware(['auth:sanctum']);
+
 
 //team
 Route::post('/createTeam', [TeamController::class, 'createTeam'])->middleware(['auth:sanctum']);

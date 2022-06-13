@@ -4,17 +4,21 @@ namespace App\Http\Controllers;
 
 use App\Models\CheckIn;
 use App\Models\NfcCards;
+use App\Models\OffDay;
 use App\Models\Team;
 use App\Models\User;
 use App\Models\WorkTimes;
 use App\Services\CheckInService;
 use App\Services\NfcCardService;
 use App\Services\UserService;
+use Carbon\Carbon;
 use DateTime;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Validator;
+
+use function Psy\debug;
 
 class UserController extends Controller
 {
@@ -101,84 +105,11 @@ class UserController extends Controller
 
         User::find($user->id)->teams()->attach($team);
 
-        $user['workTimes'] = $WorkDayController->insertWorkTimes($request['weekdays'], $request['user_id']);
+        $user['workTimes'] = $WorkDayController->insertWorkTimes($request['weekdays'], $user->id);
         return $user;
     }
-    public function getCurrentFlexBalance(User $user)
-    {
-        $CheckInService = new CheckInService();
-        $timeStamps = $CheckInService->getTimeStamps($user->id);
-        $total_time = 0;
-        $timeStamps[0] = isset($timeStamps[0]) ? $timeStamps[0] : array('created_at' => gmdate("c"));
 
-        $total_work_hours_needed = $this->TotalWorkHoursNeeded($timeStamps[0]['created_at'], $user->id);
 
-        foreach ($timeStamps as $key => $timeStamp) {
-            if (count($timeStamps) == 1) {
-                $date_a = new DateTime($timeStamp['created_at']);
-                $date_b = new DateTime(gmdate("Y-m-d H:i:s"));
-                $diff = $date_b->getTimestamp() - $date_a->getTimestamp();
-                $total_time += $diff;
-                continue;
-            } elseif ($key % 2 == 1) {
-                continue;
-            }
-
-            if (!isset($timeStamps[$key + 1])) {
-                $end_time = gmdate("Y-m-d H:i:s");
-            } else {
-                $end_time = $timeStamps[$key + 1]['created_at'];
-            }
-            $date_a = new DateTime($timeStamp['created_at']);
-            $date_b = new DateTime($end_time);
-
-            $diff = $date_b->getTimestamp() - $date_a->getTimestamp();
-            $total_time += $diff;
-        }
-        if (true) {
-            // man skal kunne tilføje flex her
-        }
-        $time =  $total_time - $total_work_hours_needed;
-
-        return $time;
-    }
-    public function TotalWorkHoursNeeded($startDate, $user_id)
-    {
-
-        $workhourdays = $this->getWorkHours($user_id);
-
-        if (!$workhourdays) {
-            return 0;
-        }
-        Log::alert($workhourdays);
-        $dateRange = $this->date_range($startDate, date("c"), '+1 day', "c");
-        $time_needed_for_work = 0;
-        foreach ($dateRange as $key => $date) {
-            $day_of_week = gmdate('N', strtotime($date));
-            if ($day_of_week == '1') {
-                $time_needed_for_work += (int)$workhourdays['1'] ?? 0;
-            }
-            if ($day_of_week == '2') {
-                $time_needed_for_work += (int)$workhourdays['2'] ?? 0;
-            }
-            if ($day_of_week == '3') {
-                $time_needed_for_work += (int)$workhourdays['3'] ?? 0;
-            }
-            if ($day_of_week == '4') {
-                $time_needed_for_work += (int)$workhourdays['4'] ?? 0;
-            }
-            if ($day_of_week == '5') {
-                $time_needed_for_work += (int)$workhourdays['5'] ?? 0;
-            }
-            if ($day_of_week == '6') {
-                $time_needed_for_work += (int)$workhourdays['6'] ?? 0;
-            }
-            if ($day_of_week == '7') {
-                $time_needed_for_work += (int)$workhourdays['7'] ?? 0;
-            }
-        }
-        return $time_needed_for_work * 3600;
-    }
     private function date_range($first, $last, $step = '+1 day', $output_format = 'd/m/Y')
     {
 
@@ -201,17 +132,36 @@ class UserController extends Controller
             die("errro");
         }
         $checkInTypeRow = CheckIn::where('user_id', $user->id)->latest()->first();
-        if (is_null($checkInTypeRow->checked_out)) {
+
+        if (is_null($checkInTypeRow->checked_out ?? null)) {
             switch ($checkInTypeRow->check_in_type ?? false) {
                 case 1:
                     return "at_work";
                 case 2:
-                    return "Working_home";
+                    return 'Working_home';
                 default:
                     return 'not_checked_in';
             }
         }
-        return 'not_checked_in';
+        return $this->findStatus($user->id);
+    }
+    public function findStatus($user_id)
+    {
+
+        $offdays = OffDay::where('user_id', $user_id)->whereNull('deleted')->whereDate('start_date', '<=', Carbon::now())
+            ->whereDate('end_date', '>=', Carbon::now())->latest()->first();
+        if (!$offdays) {
+            return "Working_home";
+        }
+
+        switch ($offdays->off_day_type ?? false) {
+            case 0:
+                return "on_leave";
+            case 1:
+                return 'sick';
+            default:
+                return 'not_checked_in';
+        }
     }
     function getUserProfile(Request $request)
     {
@@ -220,25 +170,31 @@ class UserController extends Controller
         }
 
         $user = $this->getUser($request['id']);
-
-        $user->current_flex = $this->getCurrentFlexBalance($user);
+        $CheckInController = new CheckInController();
+        $user->current_flex = $CheckInController->calculateFlex($user);
         $user->checkInDays = $this->getUserCheckInTimes($user);
         $user->check_in_state = $this->getStatus($user);
         return $user;
     }
+
+    //skal omskrives
     public function getUserCheckInTimes(user $user)
     {
         $CheckInService = new CheckInService();
         // skal tage de sidste 14 dage og ikke de sidste 14 records
         $time_stamps = $CheckInService->getTimeStamps($user->id, 40);
-        if (!isset($time_stamps[0]['created_at'])) {
+
+        if (!isset($time_stamps[0]['checked_in'])) {
             return null;
         }
+        $startDate = gmDate("Y-m-d", strtotime($time_stamps[count($time_stamps) - 1]['checked_in']));
+        $endDate = gmDate("Y-m-d", strtotime($time_stamps[0]['checked_in']));
 
-        $date_range = $this->date_range($time_stamps[count($time_stamps) - 1]['created_at'], $time_stamps[0]['created_at'],  '+1 day', 'c');
+        $date_range = $this->date_range($startDate, $endDate,  '+1 day', "Y-m-d");
+        Log::alert($date_range);
+        $workDayController = new WorkDayController();
 
-
-        $workHours = $this->getWorkhours($user->id);
+        $workTimes = $workDayController->GetWorkTimes($user->id);
 
         $resultsDateArray = array();
 
@@ -246,43 +202,40 @@ class UserController extends Controller
 
             $resultsDateArray[$key] = array('date' => $date);
             $resultsDateArray[$key]['time_at_work'] = 0;
-            $resultsDateArray[$key]['time_to_work'] =  ((int)$workHours[gmdate('N', strtotime($date))] ?? 0) * 3600;
+            $resultsDateArray[$key]['time_to_work'] =  $workDayController->getTimeToWorkOnDate($date, $workTimes, $user->id);
             $resultsDateArray[$key]['flex_balance_on_day'] = 0;
             $resultsDateArray[$key]['clock_in'] =  0;
             $resultsDateArray[$key]['clock_out'] =  0;
 
 
             $diff = 0;
+
             foreach ($time_stamps as $key1 => $time_stamp) {
-                if (gmdate('Y/m/d', strtotime($time_stamp['created_at'])) ==  gmdate('Y/m/d', strtotime($date))) {
-                    if ($key1 % 2 == 1) {
-                        continue;
-                    }
+                if (gmdate('Y/m/d', strtotime($time_stamp['checked_in'])) ==  gmdate('Y/m/d', strtotime($date))) {
+                    $resultsDateArray[$key]['times'][$key1]['id'] = $time_stamp['id'];
+                    $resultsDateArray[$key]['times'][$key1]['check_in_type'] = $time_stamp['check_in_type'];
 
-                    $resultsDateArray[$key]['times'][$key1]['from'] = $time_stamp['created_at'];
-                    $from_time = strtotime($time_stamp['created_at']);
+                    $resultsDateArray[$key]['times'][$key1]['from'] = $time_stamp['checked_in'];
+                    $from_time = strtotime($time_stamp['checked_in']);
 
 
-                    if (isset($time_stamps[$key1 + 1]['created_at'])) {
-                        $resultsDateArray[$key]['times'][$key1]['to'] = $time_stamps[$key1 + 1]['created_at'];
-                        $to_time = strtotime($time_stamps[$key1 + 1]['created_at']);
+                    if (isset($time_stamps[$key1]['checked_out'])) {
+                        $resultsDateArray[$key]['times'][$key1]['to'] = $time_stamps[$key1]['checked_out'];
+                        $to_time = strtotime($time_stamps[$key1]['checked_out']);
                     } else {
                         $to_time = strtotime(gmdate('c', time()));
                     }
-                    $diff += $resultsDateArray[$key]['times'][$key1]['total_time'] = $to_time - $from_time;
+                    $diff += $resultsDateArray[$key]['times'][$key1]['total_time'] =   $to_time - $from_time;
                 }
             }
             if (isset($resultsDateArray[$key]['times'])) {
                 $resultsDateArray[$key]['times'] = array_values($resultsDateArray[$key]['times']);
-            }
-            if (isset($resultsDateArray[$key]['times'][0]['from'])) {
-                $resultsDateArray[$key]['clock_in'] = $resultsDateArray[$key]['times'][0]['from'];
-            }
-            if (isset($resultsDateArray[$key]['times']) && isset($resultsDateArray[$key]['times'][count($resultsDateArray[$key]['times']) - 1]['to'])) {
-                $resultsDateArray[$key]['clock_out'] = $resultsDateArray[$key]['times'][count($resultsDateArray[$key]['times']) - 1]['to'];
+                $resultsDateArray[$key]['clock_in'] = $resultsDateArray[$key]['times'][count($resultsDateArray[$key]['times']) - 1]['from'];
+                $resultsDateArray[$key]['clock_out'] = $resultsDateArray[$key]['times'][0]['to'] ?? '';
             }
 
-            $resultsDateArray[$key]['flex_balance_on_day']  = $diff - (int)($workHours[gmdate('N', strtotime($date))] ?? 0) * 3600;
+            Log::alert($resultsDateArray[$key]['time_to_work']);
+            $resultsDateArray[$key]['flex_balance_on_day']  = $diff - $resultsDateArray[$key]['time_to_work'];
             $resultsDateArray[$key]['time_at_work'] = $diff;
         }
         return $resultsDateArray;
@@ -297,8 +250,12 @@ class UserController extends Controller
     public function createUserToken(Request $request)
     {
         $user = $this->getUser($request['user_id']);
-        $token = $user->createToken($request->header('User-Agent'));
-        return ['token' => $token->plainTextToken, 'user-agent' => $request->header('User-Agent')];
+        if ($user->is_admin) {
+
+            $token = $user->createToken($request->header('User-Agent'));
+            return ['token' => $token->plainTextToken, 'user-agent' => $request->header('User-Agent')];
+        }
+        return response(['error' => 'user_does_not_allowed'], 401);
     }
     public function revokeUserToken(Request $request)
     {
@@ -315,6 +272,7 @@ class UserController extends Controller
         $returnArray['work_times'] = $this->getWorkHours($request['user_id']);
         if ($request['user_id'] != 0) {
             $returnArray['user']['teams'] = User::find($request['user_id'])->teams()->get() ?? [];
+            $returnArray['days_off'] = OffDay::where('user_id', $request['user_id'])->whereNull('deleted')->get();
         }
         if (!isset($request['user_id']) && $request['user_id'] != 0) {
             $returnArray['work_times'] = WorkTimes::where('user_id', $request['user_id'])->first();
@@ -339,5 +297,34 @@ class UserController extends Controller
         $user = User::find($request['user_id']);
         $user->delete();
         return 'success';
+    }
+    public function AddOffDay(Request $request)
+    {
+
+        OffDay::create([
+
+            'user_id' => $request['user_id'],
+            'start_date' => $request['startDate'],
+            'end_date' => $request['endDate'],
+            'comment' => $request['comment'],
+            'off_day_type' => $request['offType'],
+        ]);
+        return OffDay::where('user_id', $request['user_id'])->whereNull('deleted')->get();
+    }
+    public function deleteDayOff(request $request)
+    {
+        return OffDay::find($request['day_off_id'])->update(['deleted' => Carbon::now(), 'calculated' => 0]);
+    }
+    public function editDayOff(request $request)
+    {
+
+
+        return OffDay::find($request['day_off_id'])->update([
+            'start_date' => $request['startDate'],
+            'end_date' => $request['endDate'],
+            'comment' => $request['comment'],
+            'off_day_type' => $request['offType'],
+            'calculated' => 0,
+        ]);
     }
 }

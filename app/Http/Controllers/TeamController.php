@@ -34,15 +34,16 @@ class TeamController extends Controller
     {
         $team = new Team();
         $teams = $team->get();
+        $UserController = new UserController();
+        $checkInContoller = new CheckInController();
         foreach ($teams as $key => $team) {
             $teams[$key]->users = $team->users()->get();
 
             foreach ($teams[$key]->users as $key1 => $user) {
 
-                $UserController = new UserController();
 
                 $user_obj = $UserController->getUser($user->id);
-                $teams[$key]->users[$key1]['current_flex'] = $UserController->getCurrentFlexBalance($user_obj);
+                $teams[$key]->users[$key1]['current_flex'] = $checkInContoller->calculateFlex($user_obj);
                 $teams[$key]->users[$key1]['check_in_status'] = $UserController->getStatus($user_obj);
             }
         }

@@ -16,8 +16,8 @@ return new class extends Migration
         Schema::table('check_in', function (Blueprint $table) {
             $table->integer('calculated_flex')->nullable();
             $table->integer('calculated')->nullable();
-            $table->dateTime('checked_in');
-            $table->dateTime('checked_out')->nullable();
+            $table->timestamp('checked_in')->nullable();
+            $table->timestamp('checked_out')->nullable();
         });
     }
 
