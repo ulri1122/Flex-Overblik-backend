@@ -42,19 +42,20 @@ class CheckInController extends Controller
 
         $CheckIntimeRows = $this->getTimeStampsToCalculate($user->id);
 
-        if (!isset($CheckIntimeRows)) {
+        if (!isset($CheckIntimeRows['id'])) {
             $lastCheckInRow = CheckIn::where('user_id', $user->id)->orderBy('id', 'desc')->first();
             return $lastCheckInRow['calculated_flex'] ?? 0;
         }
 
         $CheckIntimeRows = $this->getLastDayNotCalculated($CheckIntimeRows->checked_in, $user->id);
-        Log::alert('first id to calculate');
-        Log::alert($CheckIntimeRows[0]['id']);
-        $lastCalculatedTime = $this->getLastCalculatedTime($CheckIntimeRows[0]->id, $user->id);
 
         if (!$CheckIntimeRows[0]) {
             return 'missing time stamps';
         }
+        Log::alert('first id to calculate');
+        Log::alert($CheckIntimeRows[0]['id']);
+        $lastCalculatedTime = $this->getLastCalculatedTime($CheckIntimeRows[0]->id, $user->id);
+
         $startDate = gmDate("Y-m-d", strtotime($CheckIntimeRows[0]['checked_in']));
         $now = gmDate("Y-m-d", strtotime(Carbon::now()));
         $dates_to_calculate = $this->date_range($startDate, $now, '+1 day', "Y-m-d");
@@ -71,7 +72,6 @@ class CheckInController extends Controller
         foreach ($dates_to_calculate as $key => $date_to_calculate) {
 
             $totalTimeToWorkOnDay = -$workDayController->getTimeToWorkOnDate($date_to_calculate, $workTimes, $user->id);
-            Log::alert($workDayController->getTimeToWorkOnDate($date_to_calculate, $workTimes, $user->id));
 
             $CalculatedFlex = $CalculatedFlex + $totalTimeToWorkOnDay;
 
@@ -86,21 +86,20 @@ class CheckInController extends Controller
                     if (is_null($CheckInTime['checked_out'])) {
 
                         $flexBetweenTs = strtotime(Carbon::now()) - strtotime($CheckInTime['checked_in']);
-                        CheckIn::find($CheckInTime->id)->update(['calculated_flex' => $CalculatedFlex + $flexBetweenTs, 'calculated' => 1]);
+                        CheckIn::find($CheckInTime->id)->update(['calculated_flex' => $CalculatedFlex + $flexBetweenTs, 'calculated' => 0]);
                         $CalculatedFlex = $CalculatedFlex + $flexBetweenTs;
                         continue;
                     }
 
                     $flexBetweenTs = strtotime($CheckInTime['checked_out']) - strtotime($CheckInTime['checked_in']);
                     $CalculatedFlex = $CalculatedFlex + $flexBetweenTs;
-
-                    CheckIn::find($CheckInTime->id)->update(['calculated_flex' => $CalculatedFlex, 'calculated' => 1]);
+                    $checkIn = CheckIn::find($CheckInTime->id)->update(['calculated_flex' => $CalculatedFlex, 'calculated' => 1]);
                 }
             }
         }
 
 
-        OffDay::where('user_id', $user->id)->update(['calculated' => 0]);
+        OffDay::where('user_id', $user->id)->update(['calculated' => 1]);
 
 
         return $CalculatedFlex;
@@ -116,20 +115,17 @@ class CheckInController extends Controller
     {
         $nonCalculatedOffDay = OffDay::Where('user_id', $user_id)->where('calculated', 0)->orWhere('calculated', null)->get();
 
-        if ($nonCalculatedOffDay) {
-            Log::alert($nonCalculatedOffDay->min('start_date'));
+
+        if (isset($nonCalculatedOffDay[0])) {
             $uncalculatedTimes = CheckIn::where('user_id', $user_id)->where('checked_in', '<=', gmdate('Y-m-d', strtotime($nonCalculatedOffDay->min('start_date'))))->orderBy('id', 'asc')->first();
-            Log::alert($uncalculatedTimes);
 
             if (!$uncalculatedTimes) {
                 return $ifNoPrev = CheckIn::where('user_id', $user_id)->orderBy('id', 'asc')->first();
-                Log::alert($ifNoPrev);
             }
             return $uncalculatedTimes;
         }
 
         $uncalculatedTimes = CheckIn::where('user_id', $user_id)->where('calculated', 0)->orWhere('calculated', null)->orderBy('id', 'asc')->first();
-        Log::alert($uncalculatedTimes);
         if ($uncalculatedTimes) {
             return $uncalculatedTimes;
         } else {
@@ -173,7 +169,6 @@ class CheckInController extends Controller
 
     public function addFlex(Request $request)
     {
-        Log::alert($request);
         $date = Carbon::now();
         return CheckIn::create([
             'user_id' => $request['user_id'],

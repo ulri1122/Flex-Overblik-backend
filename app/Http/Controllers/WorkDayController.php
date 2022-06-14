@@ -27,7 +27,7 @@ class WorkDayController extends Controller
     public function getTimeToWorkOnDate($date, $work_time_objs, $user_id)
     {
 
-        $nonCalculatedOffDays = OffDay::Where('user_id', $user_id)->where('calculated', 0)->orWhere('calculated', null)->get();
+        $nonCalculatedOffDays = OffDay::Where('user_id', $user_id)->whereNull('deleted')->get();
 
 
         foreach ($work_time_objs as $key => $work_time_obj) {

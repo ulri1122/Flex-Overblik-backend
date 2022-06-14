@@ -151,7 +151,7 @@ class UserController extends Controller
         $offdays = OffDay::where('user_id', $user_id)->whereNull('deleted')->whereDate('start_date', '<=', Carbon::now())
             ->whereDate('end_date', '>=', Carbon::now())->latest()->first();
         if (!$offdays) {
-            return "Working_home";
+            return "not_checked_in";
         }
 
         switch ($offdays->off_day_type ?? false) {
@@ -191,7 +191,6 @@ class UserController extends Controller
         $endDate = gmDate("Y-m-d", strtotime($time_stamps[0]['checked_in']));
 
         $date_range = $this->date_range($startDate, $endDate,  '+1 day', "Y-m-d");
-        Log::alert($date_range);
         $workDayController = new WorkDayController();
 
         $workTimes = $workDayController->GetWorkTimes($user->id);
@@ -234,7 +233,6 @@ class UserController extends Controller
                 $resultsDateArray[$key]['clock_out'] = $resultsDateArray[$key]['times'][0]['to'] ?? '';
             }
 
-            Log::alert($resultsDateArray[$key]['time_to_work']);
             $resultsDateArray[$key]['flex_balance_on_day']  = $diff - $resultsDateArray[$key]['time_to_work'];
             $resultsDateArray[$key]['time_at_work'] = $diff;
         }
