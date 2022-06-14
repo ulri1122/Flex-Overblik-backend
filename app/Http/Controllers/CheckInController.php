@@ -35,6 +35,8 @@ class CheckInController extends Controller
         return array(
             'current_flex' => $this->calculateFlex($user),
             'checkin_status' => $UserController->getStatus($user),
+            'user_img' => $user->image_path,
+            'username' => $user->name
         );
     }
     public function calculateFlex(User $user)

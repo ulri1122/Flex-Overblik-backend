@@ -88,7 +88,7 @@ class UserController extends Controller
             $user['teams'] = User::find($request['user_id'])->teams()->get() ?? [];
 
             $user['workTimes'] = $WorkDayController->insertWorkTimes($request['weekdays'], $request['user_id']);
-
+            $user['nfc_cards'] =  NfcCards::where('user_id', $user->id)->get();
 
 
             return $user;
@@ -325,7 +325,8 @@ class UserController extends Controller
             'calculated' => 0,
         ]);
     }
-    public function createFirstUser(){
+    public function createFirstUser()
+    {
 
         $team =  Team::create([
             'team_name' => 'first_Team'
@@ -336,7 +337,7 @@ class UserController extends Controller
             "phone" => 12345678,
             "email" => "mail@mail.com",
             "card_id" => 1,
-            "team_id" => $team->id ,
+            "team_id" => $team->id,
             'is_admin' => 1
         ]);
 

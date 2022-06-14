@@ -23,10 +23,12 @@ class CheckInService
         if (!$nfc_card) {
             return ['error' => 'card_does_not_excist'];
         }
-
+        Log::alert($nfc_card);
         if (!$nfc_card->user) {
             return ['error' => 'user_does_not_excist'];
         }
+        Log::alert($nfc_card);
+
         $checkInTypeRow = CheckIn::where('user_id', $nfc_card['user_id'])->latest()->first();
 
         if ($checkInTypeRow && is_null($checkInTypeRow['checked_out'])) {
