@@ -325,4 +325,29 @@ class UserController extends Controller
             'calculated' => 0,
         ]);
     }
+    public function createFirstUser(){
+
+        $team =  Team::create([
+            'team_name' => 'first_Team'
+        ]);
+        $NfcCards = new NfcCardService();
+        $user = User::create([
+            "name" => "Admin",
+            "phone" => 12345678,
+            "email" => "mail@mail.com",
+            "card_id" => 1,
+            "team_id" => $team->id ,
+            'is_admin' => 1
+        ]);
+
+        if (!$user) {
+            return response(['error' => 'user_does_not_excist'], 404);
+        }
+
+        $NfcCards->createCard($user, 1);
+
+        User::find($user->id)->teams()->attach($team);
+
+        return $user;
+    }
 }

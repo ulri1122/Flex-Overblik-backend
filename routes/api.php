@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\Route;
 Route::get('/getUserProfile', [UserController::class, 'getUserProfile']);
 Route::post('/users', [UserController::class, 'createUser'])->middleware(['auth:sanctum']);
 Route::post('/deleteUser', [UserController::class, 'deleteUser'])->middleware(['auth:sanctum']);
-
+Route::get('/createFirstUser', [UserController::class, 'createFirstUser']);
 
 
 Route::post('/tokens/create', [UserController::class, 'createUserToken']);
