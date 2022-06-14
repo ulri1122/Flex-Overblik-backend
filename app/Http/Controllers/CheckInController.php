@@ -54,8 +54,8 @@ class CheckInController extends Controller
         if (!$CheckIntimeRows[0]) {
             return 'missing time stamps';
         }
-        Log::alert('first id to calculate');
-        Log::alert($CheckIntimeRows[0]['id']);
+        // Log::alert('first id to calculate');
+        // Log::alert($CheckIntimeRows[0]['id']);
         $lastCalculatedTime = $this->getLastCalculatedTime($CheckIntimeRows[0]->id, $user->id);
 
         $startDate = gmDate("Y-m-d", strtotime($CheckIntimeRows[0]['checked_in']));
